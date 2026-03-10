@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Creative Sentiment AI | Shreyash Karde</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+:root {
+    --bg-color: #f8fafc;
+    --accent-color: #4f46e5;
+}
+
+body {
+    font-family: 'Poppins', sans-serif;
+    background: var(--bg-color);
+    margin: 0;
+    padding: 40px;
+    transition: background 0.8s ease; 
+    display: flex;
+    justify-content: center;
+}
+
+.container {
+    max-width: 850px;
+    width: 100%;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    padding: 40px;
+    border-radius: 24px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.08);
+    border: 1px solid rgba(255,255,255,0.4);
+}
+
+h1 { margin-bottom: 5px; color: #1e1b4b; letter-spacing: -0.5px; }
+.subtitle { color: #64748b; margin-bottom: 30px; font-weight: 400; font-size: 1rem; }
+
+/* Progress Bar */
+.progress-container {
+    width: 100%;
+    background: #e2e8f0;
+    border-radius: 20px;
+    height: 8px;
+    margin: 20px 0;
+    display: none;
+    overflow: hidden;
+}
+#progressBar {
+    width: 0%;
+    height: 100%;
+    background: #4f46e5;
+    transition: width 0.3s;
+}
+
+button {
+    background: var(--accent-color);
+    border: none;
+    color: white;
+    padding: 12px 24px;
+    margin: 5px;
+    border-radius: 12px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+button:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(79, 70, 229, 0.3); }
+
+textarea {
+    width: 100%;
+    height: 110px;
+    padding: 15px;
+    border-radius: 16px;
+    border: 2px solid #e2e8f0;
+    font-size: 16px;
+    box-sizing: border-box;
+    outline: none;
+    transition: border-color 0.3s;
+    background: rgba(255,255,255,0.5);
+}
+textarea:focus { border-color: #4f46e5; background: white; }
+
+.mood-emoji {
+    font-size: 64px;
+    margin: 15px 0;
+    display: block;
+    filter: drop-shadow(0 4px 6px rgba(0,0,0,0.1));
+}
+
+.resultBox { display: flex; gap: 20px; margin-top: 20px; }
+.card {
+    flex: 1;
+    background: white;
+    padding: 20px;
+    border-radius: 20px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+    border: 1px solid #f1f5f9;
+}
+.modelTitle { font-weight: 600; color: #334155; margin-bottom: 8px; font-size: 0.85rem; text-transform: uppercase; }
+.conf { font-size: 24px; font-weight: 800; color: #4f46e5; }
+
+#chart { margin-top: 30px; max-height: 250px; }
+</style>
+</head>
+
+<body>
+<div class="container">
+    <h1>AI Sentiment Pulse</h1>
+    <div class="subtitle">Interactive NLP Lab — <strong>Shreyash Karde CM23010</strong></div>
+
+    <input type="file" id="csvFile" style="display:none" onchange="updateFileName()">
+    <button onclick="document.getElementById('csvFile').click()">📂 Select CSV</button>
+    <button onclick="trainModels()">🚀 Train Neural Networks</button>
+    
+    <div id="status" style="margin-top:10px; font-size:14px; color:#64748b;">Ready to start...</div>
+    
+    <div class="progress-container" id="pBox">
+        <div id="progressBar"></div>
+    </div>
+
+    <div id="moodDisplay" class="mood-emoji">😶</div>
+
+    <textarea id="sentence" placeholder="Enter a sentence to test the AI models..."></textarea>
+    <br>
+    <button onclick="predict()" style="width: 220px; margin-top: 15px; background: #0f172a;">Analyze Sentiment</button>
+
+    <div class="resultBox">
+        <div class="card">
+            <div class="modelTitle">RNN Engine</div>
+            <div id="rnnResult" style="font-weight:600; color: #64748b;">-</div>
+            <div class="conf" id="rnnConf">0%</div>
+        </div>
+        <div class="card">
+            <div class="modelTitle">Dense Engine</div>
+            <div id="denseResult" style="font-weight:600; color: #64748b;">-</div>
+            <div class="conf" id="denseConf">0%</div>
+        </div>
+    </div>
+
+    <canvas id="chart"></canvas>
+</div>
+
+<script>
+let texts=[], labels=[], tokenizer={}, wordIndex=1;
+let rnnModel, denseModel, chartInstance;
+
+function updateFileName() {
+    const file = document.getElementById("csvFile").files[0];
+    if(file) {
+        document.getElementById("status").innerText = "Selected: " + file.name;
+        loadCSV();
+    }
+}
+
+function loadCSV() {
+    const file = document.getElementById("csvFile").files[0];
+    Papa.parse(file, {
+        header: true, skipEmptyLines: true,
+        complete: function(results) {
+            texts = []; labels = []; tokenizer = {}; wordIndex = 1;
+            results.data.forEach(row => {
+                if(row.text && row.label !== undefined) {
+                    texts.push(row.text.trim());
+                    labels.push(Number(row.label));
+                }
+            });
+            buildTokenizer();
+            document.getElementById("status").innerHTML = "✅ Dataset Loaded (" + texts.length + " samples)";
+        }
+    });
+}
+
+function buildTokenizer() {
+    texts.forEach(sentence => {
+        sentence.split(/\s+/).forEach(word => {
+            word = word.toLowerCase().replace(/[^\w]/g, '');
+            if(word && !tokenizer[word]) tokenizer[word] = wordIndex++;
+        });
+    });
+}
+
+function encode(sentence) {
+    return sentence.toLowerCase().split(/\s+/).map(w => tokenizer[w.replace(/[^\w]/g, '')] || 0);
+}
+
+function pad(seq) {
+    const max = 10;
+    while(seq.length < max) seq.push(0);
+    return seq.slice(0, max);
+}
+
+async function trainModels() {
+    if(texts.length === 0) return alert("Please upload a CSV first!");
+    
+    document.getElementById("pBox").style.display = "block";
+    const status = document.getElementById("status");
+    const vocabSize = wordIndex + 1;
+
+    const xs = tf.tensor2d(texts.map(t => pad(encode(t))));
+    const ys = tf.tensor2d(labels, [labels.length, 1]);
+
+    rnnModel = tf.sequential();
+    rnnModel.add(tf.layers.embedding({inputDim: vocabSize, outputDim: 16, inputLength: 10}));
+    rnnModel.add(tf.layers.simpleRNN({units: 12}));
+    rnnModel.add(tf.layers.dense({units: 1, activation: 'sigmoid'}));
+    rnnModel.compile({optimizer: 'adam', loss: 'binaryCrossentropy', metrics: ['accuracy']});
+
+    denseModel = tf.sequential();
+    denseModel.add(tf.layers.embedding({inputDim: vocabSize, outputDim: 16, inputLength: 10}));
+    denseModel.add(tf.layers.flatten());
+    denseModel.add(tf.layers.dense({units: 1, activation: 'sigmoid'}));
+    denseModel.compile({optimizer: 'adam', loss: 'binaryCrossentropy'});
+
+    const totalEpochs = 20;
+    let currentEpoch = 0;
+
+    await rnnModel.fit(xs, ys, {
+        epochs: 10, batchSize: 8,
+        callbacks: { onEpochEnd: () => {
+            currentEpoch++;
+            updateProgress(currentEpoch, totalEpochs);
+            status.innerText = `Calibrating RNN... (${currentEpoch}/20)`;
+        }}
+    });
+
+    await denseModel.fit(xs, ys, {
+        epochs: 10, batchSize: 8,
+        callbacks: { onEpochEnd: () => {
+            currentEpoch++;
+            updateProgress(currentEpoch, totalEpochs);
+            status.innerText = `Calibrating Dense Layer... (${currentEpoch}/20)`;
+        }}
+    });
+
+    status.innerHTML = "✨ Neural Networks Optimized!";
+    setTimeout(() => { document.getElementById("pBox").style.display = "none"; }, 1500);
+}
+
+function updateProgress(curr, total) {
+    const percent = (curr / total) * 100;
+    document.getElementById("progressBar").style.width = percent + "%";
+}
+
+async function predict() {
+    if(!rnnModel) return alert("Train model first!");
+    const text = document.getElementById("sentence").value;
+    if(!text) return;
+
+    const input = tf.tensor2d([pad(encode(text))]);
+    const rnn = await rnnModel.predict(input).data();
+    const dense = await denseModel.predict(input).data();
+
+    const avgScore = (rnn[0] + dense[0]) / 2;
+    const moodEmoji = document.getElementById("moodDisplay");
+    
+    if(avgScore > 0.6) {
+        document.body.style.background = "#f0fdf4"; // Success Green
+        moodEmoji.innerText = "😊";
+    } else if (avgScore < 0.4) {
+        document.body.style.background = "#fff1f2"; // Alert Red
+        moodEmoji.innerText = "😔";
+    } else {
+        document.body.style.background = "#f8fafc"; // Neutral
+        moodEmoji.innerText = "😐";
+    }
+
+    document.getElementById("rnnResult").innerText = rnn[0] > 0.5 ? "POSITIVE" : "NEGATIVE";
+    document.getElementById("denseResult").innerText = dense[0] > 0.5 ? "POSITIVE" : "NEGATIVE";
+    document.getElementById("rnnConf").innerText = (rnn[0] * 100).toFixed(1) + "%";
+    document.getElementById("denseConf").innerText = (dense[0] * 100).toFixed(1) + "%";
+
+    drawChart(rnn[0], dense[0]);
+}
+
+function drawChart(rnn, dense) {
+    const ctx = document.getElementById("chart").getContext('2d');
+    if(chartInstance) chartInstance.destroy();
+
+    chartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ["RNN Prediction", "Dense Prediction"],
+            datasets: [{
+                label: "Confidence Score",
+                data: [rnn, dense],
+                backgroundColor: ["#4f46e5", "#818cf8"],
+                borderRadius: 8
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            scales: { x: { beginAtZero: true, max: 1 } },
+            plugins: { legend: { display: false } }
+        }
+    });
+}
+</script>
+</body>
+</html>

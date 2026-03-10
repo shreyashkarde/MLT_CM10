@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Real-Time Vision | Shreyash Karde</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet"></script>
+
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: #0f172a;
+            color: white;
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+            margin: 0;
+        }
+        .container {
+            max-width: 700px;
+            width: 100%;
+            text-align: center;
+        }
+        h1 { color: #f8fafc; margin-bottom: 5px; }
+        .subtitle { color: #94a3b8; margin-bottom: 20px; }
+
+        .video-wrapper {
+            position: relative;
+            border-radius: 20px;
+            overflow: hidden;
+            border: 4px solid #334155;
+            background: #000;
+            line-height: 0;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        }
+        video {
+            width: 100%;
+            height: auto;
+            transform: scaleX(-1); /* Mirror effect */
+        }
+
+        .overlay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(15, 23, 42, 0.8);
+            padding: 15px;
+            border-radius: 12px;
+            text-align: left;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255,255,255,0.1);
+            pointer-events: none;
+        }
+
+        .prediction-row {
+            margin: 5px 0;
+            font-size: 14px;
+        }
+        .bar-bg {
+            width: 150px;
+            height: 8px;
+            background: #334155;
+            border-radius: 4px;
+            display: inline-block;
+            margin-left: 10px;
+        }
+        .bar-fill {
+            height: 100%;
+            background: #6366f1;
+            border-radius: 4px;
+            transition: width 0.2s;
+        }
+
+        .status-pill {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            background: #1e293b;
+            font-size: 12px;
+            margin-bottom: 15px;
+            border: 1px solid #334155;
+        }
+
+        .controls { margin-top: 20px; }
+        .btn {
+            background: #6366f1;
+            color: white;
+            padding: 12px 30px;
+            border-radius: 10px;
+            cursor: pointer;
+            border: none;
+            font-weight: 600;
+            font-size: 16px;
+        }
+        .btn:hover { background: #4f46e5; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Webcam Object Detection</h1>
+    <div class="subtitle">Shreyash Karde — CM23010</div>
+
+    <div id="status" class="status-pill">⏳ Initializing AI...</div>
+
+    <div class="video-wrapper">
+        <video id="webcam" autoplay playsinline></video>
+        
+        <div class="overlay" id="resultsUI">
+            <div style="font-weight: 600; color: #818cf8; margin-bottom: 10px;">AI PERCEPTION</div>
+            <div id="prediction-list"></div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button id="toggleBtn" class="btn">Start Camera</button>
+    </div>
+</div>
+
+<script>
+    const video = document.getElementById('webcam');
+    const status = document.getElementById('status');
+    const predictionList = document.getElementById('prediction-list');
+    const toggleBtn = document.getElementById('toggleBtn');
+    
+    let model;
+    let isPredicting = false;
+
+    // 1. Setup Webcam
+    async function setupWebcam() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "user" }, 
+                audio: false 
+            });
+            video.srcObject = stream;
+            return new Promise((resolve) => {
+                video.onloadedmetadata = () => resolve();
+            });
+        } catch (e) {
+            status.innerText = "❌ Webcam Access Denied";
+            console.error(e);
+        }
+    }
+
+    // 2. Load MobileNet
+    async function init() {
+        model = await mobilenet.load();
+        status.innerText = "✅ Model Ready";
+    }
+
+    // 3. Continuous Prediction Loop
+    async function predictLoop() {
+        if (!isPredicting) return;
+
+        // Classify the current frame
+        const predictions = await model.classify(video);
+        
+        // Update the UI
+        renderPredictions(predictions);
+
+        // Call the next frame
+        requestAnimationFrame(predictLoop);
+    }
+
+    function renderPredictions(predictions) {
+        predictionList.innerHTML = '';
+        predictions.forEach(p => {
+            const percentage = (p.probability * 100).toFixed(0);
+            const row = document.createElement('div');
+            row.className = 'prediction-row';
+            row.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="text-transform: capitalize;">${p.className.split(',')[0]}</span>
+                    <span>${percentage}%</span>
+                </div>
+                <div class="bar-bg"><div class="bar-fill" style="width: ${percentage}%"></div></div>
+            `;
+            predictionList.appendChild(row);
+        });
+    }
+
+    // Toggle Camera and Prediction
+    toggleBtn.addEventListener('click', async () => {
+        if (!isPredicting) {
+            await setupWebcam();
+            isPredicting = true;
+            toggleBtn.innerText = "Stop Camera";
+            status.innerText = "👁️ AI is watching...";
+            predictLoop();
+        } else {
+            const stream = video.srcObject;
+            const tracks = stream.getTracks();
+            tracks.forEach(track => track.stop());
+            video.srcObject = null;
+            isPredicting = false;
+            toggleBtn.innerText = "Start Camera";
+            status.innerText = "✅ Model Ready";
+            predictionList.innerHTML = '';
+        }
+    });
+
+    init();
+</script>
+</body>
+</html>

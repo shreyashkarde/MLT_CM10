@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Vision | Shreyash Karde</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet"></script>
+
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            padding: 40px;
+            margin: 0;
+        }
+        .container {
+            max-width: 600px;
+            width: 100%;
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        h1 { color: #1e293b; margin-bottom: 5px; }
+        .subtitle { color: #64748b; margin-bottom: 25px; font-size: 0.9rem; }
+        
+        #image-container {
+            width: 100%;
+            min-height: 300px;
+            border: 2px dashed #cbd5e1;
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            margin-bottom: 20px;
+            background: #f8fafc;
+        }
+        img { max-width: 100%; max-height: 400px; display: none; }
+
+        .controls { margin-bottom: 20px; }
+        input[type="file"] { display: none; }
+        .btn {
+            background: #4f46e5;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 10px;
+            cursor: pointer;
+            border: none;
+            font-weight: 600;
+            transition: 0.3s;
+            display: inline-block;
+        }
+        .btn:hover { background: #4338ca; transform: translateY(-2px); }
+        .btn:disabled { background: #94a3b8; cursor: not-allowed; }
+
+        #predictions {
+            text-align: left;
+            margin-top: 20px;
+        }
+        .prediction-item {
+            background: #f1f5f9;
+            padding: 10px 15px;
+            margin: 5px 0;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .label { font-weight: 600; color: #334155; text-transform: capitalize; }
+        .probability { color: #4f46e5; font-weight: bold; }
+        
+        #loader { color: #4f46e5; font-weight: 600; display: block; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>AI Image Classifier</h1>
+    <div class="subtitle">MobileNet Pre-trained Model — <strong>Shreyash Karde CM23010</strong></div>
+
+    <div id="loader">Loading Model... Please wait.</div>
+
+    <div id="image-container">
+        <span id="placeholder">Image will appear here</span>
+        <img id="selected-image" crossorigin="anonymous" src="#" alt="Selected Image" />
+    </div>
+
+    <div class="controls">
+        <label for="file-upload" class="btn">📂 Upload Image</label>
+        <input type="file" id="file-upload" accept="image/*">
+        <button id="classify-btn" class="btn" disabled>🔍 Identify Image</button>
+    </div>
+
+    <div id="predictions"></div>
+</div>
+
+<script>
+    let model;
+    const image = document.getElementById('selected-image');
+    const fileUpload = document.getElementById('file-upload');
+    const classifyBtn = document.getElementById('classify-btn');
+    const placeholder = document.getElementById('placeholder');
+    const predictionsDiv = document.getElementById('predictions');
+    const loader = document.getElementById('loader');
+
+    // 1. Load the MobileNet model
+    async function loadModel() {
+        try {
+            model = await mobilenet.load();
+            loader.innerText = "✅ Model Loaded Successfully";
+            loader.style.color = "#10b981";
+        } catch (e) {
+            loader.innerText = "❌ Error loading model";
+            console.error(e);
+        }
+    }
+
+    // 2. Handle Image Upload
+    fileUpload.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                image.src = event.target.result;
+                image.style.display = 'block';
+                placeholder.style.display = 'none';
+                classifyBtn.disabled = false;
+                predictionsDiv.innerHTML = ''; // Clear old results
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    // 3. Classify the Image
+    classifyBtn.addEventListener('click', async () => {
+        if (!model) return;
+
+        loader.innerText = "Analyzing...";
+        classifyBtn.disabled = true;
+
+        // The model classifies the image element directly
+        const predictions = await model.classify(image);
+
+        displayResults(predictions);
+        loader.innerText = "Analysis Complete";
+        classifyBtn.disabled = false;
+    });
+
+    // 4. Show results in the UI
+    function displayResults(results) {
+        predictionsDiv.innerHTML = '<h3>Top Predictions:</h3>';
+        results.forEach(p => {
+            const div = document.createElement('div');
+            div.className = 'prediction-item';
+            
+            const score = (p.probability * 100).toFixed(2);
+            div.innerHTML = `
+                <span class="label">${p.className}</span>
+                <span class="probability">${score}%</span>
+            `;
+            predictionsDiv.appendChild(div);
+        });
+    }
+
+    loadModel();
+</script>
+
+</body>
+</html>
