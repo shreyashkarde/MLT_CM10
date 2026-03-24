@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Pose Tracker | Shreyash Karde</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Orbitron', sans-serif;
+            background: #050505;
+            color: #00f2ff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .header { text-align: center; margin-bottom: 20px; }
+        .author { font-size: 10px; color: #0077ff; letter-spacing: 2px; }
+
+        .viewport {
+            position: relative;
+            width: 640px;
+            height: 480px;
+            border: 2px solid #00f2ff;
+            box-shadow: 0 0 40px rgba(0, 242, 255, 0.2);
+            border-radius: 15px;
+            overflow: hidden;
+        }
+
+        video, canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 640px;
+            height: 480px;
+        }
+
+        video { transform: scaleX(-1); } /* Mirror */
+        canvas { transform: scaleX(-1); z-index: 10; }
+
+        .controls { margin-top: 25px; }
+        .btn {
+            background: transparent;
+            color: #00f2ff;
+            border: 1px solid #00f2ff;
+            padding: 12px 40px;
+            cursor: pointer;
+            font-family: 'Orbitron', sans-serif;
+            text-transform: uppercase;
+            transition: 0.3s;
+        }
+
+        .btn:hover { background: rgba(0, 242, 255, 0.1); box-shadow: 0 0 20px #00f2ff; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>POSE ARCHITECT v1.0</h1>
+        <div class="author">SHREYASH KARDE | CM23010</div>
+    </div>
+
+    <div class="viewport">
+        <video id="webcam" autoplay playsinline></video>
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <div class="controls">
+        <button class="btn" id="toggleBtn">Start Tracking</button>
+    </div>
+
+<script>
+    const video = document.getElementById('webcam');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const btn = document.getElementById('toggleBtn');
+
+    let net;
+    let isTracking = false;
+
+    // 1. Initialize PoseNet
+    async function loadPoseNet() {
+        btn.innerText = "LOADING POSE-ENGINE...";
+        net = await posenet.load({
+            architecture: 'MobileNetV1',
+            outputStride: 16,
+            inputResolution: { width: 640, height: 480 },
+            multiplier: 0.75
+        });
+        btn.innerText = "START TRACKING";
+    }
+
+    async function setupCamera() {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { width: 640, height: 480 }, 
+            audio: false 
+        });
+        video.srcObject = stream;
+        return new Promise(resolve => video.onloadedmetadata = resolve);
+    }
+
+    // 2. Detection Loop
+    async function detectPose() {
+        if (!isTracking) return;
+
+        // Estimate single pose (fastest for webcam)
+        const pose = await net.estimateSinglePose(video, {
+            flipHorizontal: false // Already flipped via CSS
+        });
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawPose(pose);
+
+        requestAnimationFrame(detectPose);
+    }
+
+    // 3. Drawing the Skeleton
+    function drawPose(pose) {
+        // Only draw if confidence is high
+        if (pose.score < 0.2) return;
+
+        // Draw Joints (Points)
+        pose.keypoints.forEach(keypoint => {
+            if (keypoint.score > 0.5) {
+                const { y, x } = keypoint.position;
+                ctx.beginPath();
+                ctx.arc(x, y, 6, 0, 2 * Math.PI);
+                ctx.fillStyle = "#00f2ff";
+                ctx.fill();
+                
+                // Add Glow
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = "#00f2ff";
+            }
+        });
+
+        // Draw Skeleton Lines
+        const adjacentKeyPoints = posenet.getAdjacentKeyPoints(pose.keypoints, 0.5);
+        adjacentKeyPoints.forEach(keypoints => {
+            ctx.beginPath();
+            ctx.moveTo(keypoints[0].position.x, keypoints[0].position.y);
+            ctx.lineTo(keypoints[1].position.x, keypoints[1].position.y);
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = "#0077ff";
+            ctx.stroke();
+        });
+    }
+
+    btn.addEventListener('click', async () => {
+        if (!isTracking) {
+            canvas.width = 640;
+            canvas.height = 480;
+            await setupCamera();
+            isTracking = true;
+            btn.innerText = "Stop System";
+            detectPose();
+        } else {
+            isTracking = false;
+            btn.innerText = "Start Tracking";
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            video.srcObject.getTracks().forEach(t => t.stop());
+        }
+    });
+
+    loadPoseNet();
+</script>
+</body>
+</html>

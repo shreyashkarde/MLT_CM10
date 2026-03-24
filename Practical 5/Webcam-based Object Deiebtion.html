@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Vision | Shreyash Karde</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Orbitron', sans-serif;
+            background: #000;
+            color: #00ff41;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        .header { text-align: center; margin-bottom: 10px; }
+        .author { font-size: 10px; color: #008f11; letter-spacing: 2px; }
+
+        .container {
+            position: relative;
+            width: 640px;
+            height: 480px;
+            border: 2px solid #00ff41;
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(0, 255, 65, 0.2);
+        }
+
+        video, canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            border-radius: 8px;
+        }
+
+        video { transform: scaleX(-1); } /* Mirror View */
+        canvas { transform: scaleX(-1); z-index: 10; }
+
+        .controls {
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .btn {
+            background: transparent;
+            color: #00ff41;
+            border: 1px solid #00ff41;
+            padding: 12px 40px;
+            font-size: 14px;
+            cursor: pointer;
+            font-family: 'Orbitron', sans-serif;
+            transition: 0.3s;
+        }
+
+        .btn:hover {
+            background: rgba(0, 255, 65, 0.1);
+            box-shadow: 0 0 15px #00ff41;
+        }
+
+        #log {
+            margin-top: 15px;
+            font-size: 12px;
+            color: #008f11;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>NEURAL FOCUS v3.0</h1>
+        <div class="author">SHREYASH KARDE | CM23010</div>
+    </div>
+
+    <div class="container">
+        <video id="webcam" autoplay playsinline muted></video>
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <div class="controls">
+        <button class="btn" id="toggleBtn">SCANNING OFFLINE</button>
+        <div id="log">Awaiting Model Initialization...</div>
+    </div>
+
+<script>
+    const video = document.getElementById('webcam');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const btn = document.getElementById('toggleBtn');
+    const log = document.getElementById('log');
+
+    let model;
+    let isRunning = false;
+    let lastSpoken = "";
+
+    // 1. Initialize COCO-SSD
+    async function init() {
+        log.innerText = "⚡ Loading Neural Networks...";
+        model = await cocoSsd.load();
+        log.innerText = "✅ System Ready. Click Initiate.";
+        btn.innerText = "INITIATE SCANNER";
+    }
+
+    // 2. Setup Webcam
+    async function startCamera() {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 640, height: 480 },
+            audio: false
+        });
+        video.srcObject = stream;
+        return new Promise(resolve => video.onloadedmetadata = resolve);
+    }
+
+    // 3. Continuous Detection Loop
+    async function detect() {
+        if (!isRunning) return;
+
+        const predictions = await model.detect(video);
+        
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawFocusBoxes(predictions);
+
+        requestAnimationFrame(detect);
+    }
+
+    // 4. Draw & Predict Object Names
+    function drawFocusBoxes(predictions) {
+        predictions.forEach(prediction => {
+            const [x, y, width, height] = prediction.bbox;
+            const name = prediction.class;
+            const score = Math.round(prediction.score * 100);
+
+            // Set Style
+            ctx.strokeStyle = "#00ff41";
+            ctx.lineWidth = 3;
+            ctx.setLineDash([10, 5]); // Dashed "Focus" line
+
+            // Draw Box
+            ctx.strokeRect(x, y, width, height);
+
+            // Draw Label
+            ctx.setLineDash([]);
+            ctx.fillStyle = "#00ff41";
+            ctx.font = "16px Orbitron";
+            ctx.fillText(`${name.toUpperCase()} [${score}%]`, x, y - 10);
+
+            // Optional: Speak the name if it's new and confident
+            if (score > 75 && name !== lastSpoken) {
+                speak(name);
+                lastSpoken = name;
+            }
+        });
+    }
+
+    // Voice Engine
+    function speak(text) {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 0.9;
+        window.speechSynthesis.speak(utterance);
+    }
+
+    // Toggle System
+    btn.addEventListener('click', async () => {
+        if (!isRunning) {
+            canvas.width = 640;
+            canvas.height = 480;
+            await startCamera();
+            isRunning = true;
+            btn.innerText = "TERMINATE SCAN";
+            log.innerText = "🛰️ SCANNING LIVE FEED...";
+            detect();
+        } else {
+            isRunning = false;
+            window.speechSynthesis.cancel();
+            video.srcObject.getTracks().forEach(t => t.stop());
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            btn.innerText = "INITIATE SCANNER";
+            log.innerText = "✅ System Ready.";
+        }
+    });
+
+    init();
+</script>
+</body>
+</html>
