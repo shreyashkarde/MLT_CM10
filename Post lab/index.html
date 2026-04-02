@@ -1,0 +1,1232 @@
+CTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FaceID · Attendance</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Space+Mono:wght@400;700&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<style>
+:root {
+  --bg: #0b0e14;
+  --surface: #12161f;
+  --card: #181d28;
+  --border: rgba(255,255,255,0.07);
+  --border-bright: rgba(255,255,255,0.14);
+  --text: #e8e6e0;
+  --muted: #6b7280;
+  --accent: #e8c97e;
+  --accent-dim: rgba(232,201,126,0.12);
+  --accent-dim2: rgba(232,201,126,0.06);
+  --green: #5cb88a;
+  --green-dim: rgba(92,184,138,0.12);
+  --red: #e07070;
+  --red-dim: rgba(224,112,112,0.12);
+  --blue: #7ba7e0;
+  --radius: 14px;
+  --radius-sm: 8px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'Outfit', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none; z-index: 0;
+}
+
+body::after {
+  content: '';
+  position: fixed; top: -200px; left: 50%; transform: translateX(-50%);
+  width: 800px; height: 500px;
+  background: radial-gradient(ellipse, rgba(232,201,126,0.06) 0%, transparent 70%);
+  pointer-events: none; z-index: 0;
+}
+
+header {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(11,14,20,0.85);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  padding: 0 40px; height: 64px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+
+.logo { display: flex; align-items: center; gap: 12px; }
+.logo-icon {
+  width: 34px; height: 34px;
+  background: var(--accent-dim);
+  border: 1px solid rgba(232,201,126,0.3);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+}
+.logo-icon svg { width: 18px; height: 18px; }
+.logo-text { font-family: 'Playfair Display', serif; font-size: 1.25rem; font-weight: 600; color: var(--text); letter-spacing: -0.02em; }
+.logo-text span { color: var(--accent); }
+
+.header-right { display: flex; align-items: center; gap: 20px; }
+
+.badge {
+  font-family: 'Space Mono', monospace; font-size: 0.65rem; letter-spacing: 0.1em;
+  padding: 5px 12px; border-radius: 100px; border: 1px solid var(--border);
+  color: var(--muted); background: var(--surface);
+}
+
+.status-chip {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 0.75rem; font-weight: 500;
+  padding: 5px 14px; border-radius: 100px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+  transition: all 0.4s;
+}
+.status-chip.ready { border-color: rgba(92,184,138,0.3); color: var(--green); background: var(--green-dim); }
+.status-chip.working { border-color: rgba(232,201,126,0.3); color: var(--accent); background: var(--accent-dim); }
+.status-chip.error { border-color: rgba(224,112,112,0.3); color: var(--red); background: var(--red-dim); }
+
+.dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.dot.pulse { animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.7)} }
+
+.page {
+  position: relative; z-index: 1;
+  max-width: 1280px; margin: 0 auto;
+  padding: 40px 40px 80px;
+}
+
+.steps-nav { display: flex; align-items: center; gap: 0; margin-bottom: 40px; }
+.step-item {
+  display: flex; align-items: center; gap: 10px;
+  cursor: pointer; padding: 8px 0; flex: 1;
+  opacity: 0.4; transition: opacity 0.3s;
+}
+.step-item.active { opacity: 1; }
+.step-item.done { opacity: 0.7; }
+
+.step-num {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 1px solid var(--border-bright);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Space Mono', monospace; font-size: 0.72rem;
+  color: var(--muted); background: var(--card); flex-shrink: 0; transition: all 0.3s;
+}
+.step-item.active .step-num { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); box-shadow: 0 0 16px rgba(232,201,126,0.2); }
+.step-item.done .step-num { border-color: var(--green); color: var(--green); background: var(--green-dim); }
+.step-label { font-size: 0.8rem; font-weight: 500; white-space: nowrap; }
+.step-connector { flex: 1; height: 1px; background: var(--border); margin: 0 12px; }
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+
+.card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 28px;
+  position: relative; overflow: hidden; transition: border-color 0.3s;
+}
+.card:hover { border-color: var(--border-bright); }
+
+.card-glow {
+  position: absolute; top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0; transition: opacity 0.4s;
+}
+.card:hover .card-glow, .card.active-card .card-glow { opacity: 1; }
+
+.card-header { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px; }
+
+.card-icon {
+  width: 40px; height: 40px; border-radius: 10px;
+  background: var(--accent-dim); border: 1px solid rgba(232,201,126,0.2);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.card-icon svg { width: 20px; height: 20px; stroke: var(--accent); fill: none; stroke-width: 1.8; }
+
+.card-title { font-size: 1rem; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+.card-desc { font-size: 0.78rem; color: var(--muted); line-height: 1.5; }
+
+.drop-zone {
+  border: 1.5px dashed var(--border-bright); border-radius: var(--radius-sm);
+  padding: 32px 20px; text-align: center; cursor: pointer;
+  transition: all 0.3s; background: rgba(255,255,255,0.02); position: relative;
+}
+.drop-zone:hover, .drop-zone.dragover { border-color: var(--accent); background: var(--accent-dim2); }
+.drop-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.drop-icon { font-size: 2rem; margin-bottom: 10px; }
+.drop-label { font-size: 0.82rem; color: var(--muted); line-height: 1.6; }
+.drop-label strong { color: var(--accent); font-weight: 500; }
+.drop-sub { font-size: 0.7rem; color: var(--muted); margin-top: 6px; font-family: 'Space Mono', monospace; }
+
+.file-list { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow-y: auto; }
+.file-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 6px;
+  font-size: 0.76rem; animation: fadeUp 0.3s ease;
+}
+@keyframes fadeUp { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+
+.file-item-icon { font-size: 1rem; }
+.file-item-name { flex: 1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-item-status { font-size: 0.68rem; font-family: 'Space Mono', monospace; }
+.file-item-status.ok { color: var(--green); }
+.file-item-status.err { color: var(--red); }
+.file-item-status.pending { color: var(--muted); }
+
+.btn-row { display: flex; gap: 10px; margin-top: 18px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 11px 22px; border-radius: 8px;
+  font-family: 'Outfit', sans-serif; font-size: 0.82rem; font-weight: 600;
+  cursor: pointer; border: 1px solid transparent;
+  transition: all 0.25s; letter-spacing: 0.01em;
+}
+.btn-primary { background: var(--accent); color: #0b0e14; border-color: var(--accent); }
+.btn-primary:hover:not(:disabled) { background: #f0d898; box-shadow: 0 0 24px rgba(232,201,126,0.3); transform: translateY(-1px); }
+.btn-secondary { background: transparent; color: var(--text); border-color: var(--border-bright); }
+.btn-secondary:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: var(--accent-dim2); }
+.btn-danger { background: transparent; color: var(--red); border-color: rgba(224,112,112,0.3); }
+.btn-danger:hover { background: var(--red-dim); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
+.btn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; }
+
+.btn-green { background: var(--green); color: #0b0e14; border-color: var(--green); }
+.btn-green:hover:not(:disabled) { background: #6fcf9d; box-shadow: 0 0 24px rgba(92,184,138,0.3); transform: translateY(-1px); }
+
+.progress-section { margin-top: 20px; display: none; }
+.progress-section.visible { display: block; }
+.progress-label { display: flex; justify-content: space-between; font-size: 0.74rem; color: var(--muted); margin-bottom: 8px; font-family: 'Space Mono', monospace; }
+.progress-track { height: 6px; background: var(--surface); border-radius: 100px; overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), #f0d898); border-radius: 100px; transition: width 0.4s ease; width: 0%; }
+
+.roster-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 16px; }
+.roster-table th { text-align: left; padding: 10px 14px; font-family: 'Space Mono', monospace; font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); }
+.roster-table td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.roster-table tr:last-child td { border-bottom: none; }
+.roster-table tr { transition: background 0.2s; }
+.roster-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+.tag { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 100px; font-size: 0.67rem; font-weight: 500; font-family: 'Space Mono', monospace; }
+.tag-pending { background: rgba(107,114,128,0.15); color: var(--muted); border: 1px solid rgba(107,114,128,0.2); }
+.tag-enrolled { background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(232,201,126,0.2); }
+.tag-present { background: var(--green-dim); color: var(--green); border: 1px solid rgba(92,184,138,0.2); }
+.tag-absent { background: var(--red-dim); color: var(--red); border: 1px solid rgba(224,112,112,0.2); }
+
+.results-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+.results-title { font-family: 'Playfair Display', serif; font-size: 1.5rem; color: var(--text); }
+
+.stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 28px; }
+.stat-box { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 20px; text-align: center; }
+.stat-num { font-family: 'Playfair Display', serif; font-size: 2.4rem; color: var(--text); line-height: 1; margin-bottom: 4px; }
+.stat-num.green { color: var(--green); }
+.stat-num.red { color: var(--red); }
+.stat-lbl { font-size: 0.7rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); font-family: 'Space Mono', monospace; }
+
+/* ── WEBCAM AREA ─────────────────── */
+.webcam-wrapper {
+  position: relative;
+  background: #000;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  aspect-ratio: 16/9;
+  display: flex; align-items: center; justify-content: center;
+}
+
+.webcam-wrapper video, .webcam-wrapper canvas {
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+
+#overlayCanvas { pointer-events: none; z-index: 2; }
+
+.webcam-placeholder {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; color: var(--muted); z-index: 1;
+}
+.webcam-placeholder .big-icon { font-size: 3rem; }
+.webcam-placeholder p { font-size: 0.82rem; }
+
+.webcam-live-badge {
+  position: absolute; top: 14px; left: 14px; z-index: 10;
+  display: flex; align-items: center; gap: 7px;
+  background: rgba(11,14,20,0.82); border: 1px solid rgba(224,112,112,0.4);
+  border-radius: 100px; padding: 5px 12px;
+  font-size: 0.68rem; font-family: 'Space Mono', monospace;
+  color: var(--red); letter-spacing: 0.1em;
+  display: none;
+}
+.webcam-live-badge.visible { display: flex; }
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--red); animation: pulse 1.2s infinite; }
+
+.webcam-stats-overlay {
+  position: absolute; top: 14px; right: 14px; z-index: 10;
+  display: flex; flex-direction: column; gap: 6px;
+  pointer-events: none;
+}
+.wstat {
+  background: rgba(11,14,20,0.82); border: 1px solid var(--border-bright);
+  border-radius: 8px; padding: 6px 12px;
+  font-size: 0.68rem; font-family: 'Space Mono', monospace;
+  color: var(--text); min-width: 110px; text-align: center;
+}
+.wstat .wval { font-size: 1.1rem; color: var(--accent); display: block; font-family: 'Playfair Display', serif; }
+.wstat .wval.green { color: var(--green); }
+
+/* Scan line animation on live feed */
+.scan-line {
+  position: absolute; left: 0; right: 0; height: 2px; z-index: 5;
+  background: linear-gradient(90deg, transparent, rgba(232,201,126,0.5), transparent);
+  animation: scanMove 3s linear infinite;
+  pointer-events: none; display: none;
+}
+.scan-line.active { display: block; }
+@keyframes scanMove { 0%{top:0%} 100%{top:100%} }
+
+/* Confirmed flash */
+.confirm-flash {
+  position: absolute; inset: 0; z-index: 8;
+  background: rgba(92,184,138,0.15);
+  border: 2px solid var(--green);
+  border-radius: var(--radius);
+  opacity: 0; pointer-events: none;
+  animation: none;
+}
+.confirm-flash.flash { animation: flashAnim 0.6s ease forwards; }
+@keyframes flashAnim { 0%{opacity:1} 100%{opacity:0} }
+
+/* Present ticker */
+.present-ticker {
+  position: absolute; bottom: 14px; left: 14px; right: 14px; z-index: 10;
+  background: rgba(11,14,20,0.88);
+  border: 1px solid rgba(92,184,138,0.3);
+  border-radius: 10px; padding: 10px 14px;
+  display: none; align-items: center; gap: 10px;
+  font-size: 0.78rem;
+}
+.present-ticker.visible { display: flex; }
+.ticker-icon { font-size: 1.1rem; flex-shrink: 0; }
+.ticker-name { color: var(--green); font-weight: 600; flex: 1; }
+.ticker-conf { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--muted); }
+
+/* Right panel: live roster */
+.live-roster {
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 420px; overflow-y: auto;
+  margin-top: 10px;
+}
+.lr-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 8px;
+  font-size: 0.78rem; transition: all 0.4s;
+}
+.lr-item.present {
+  background: rgba(92,184,138,0.08);
+  border-color: rgba(92,184,138,0.25);
+  animation: markPresent 0.5s ease;
+}
+@keyframes markPresent { 0%{transform:scale(1.02);background:rgba(92,184,138,0.25)} 100%{transform:scale(1)} }
+.lr-name { flex: 1; font-weight: 500; }
+.lr-time { font-size: 0.65rem; font-family: 'Space Mono', monospace; color: var(--muted); }
+.lr-avatar { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border); flex-shrink: 0; }
+.lr-avatar-ph { width: 26px; height: 26px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 0.6rem; color: var(--muted); flex-shrink: 0; }
+
+.toast-container { position: fixed; bottom: 28px; right: 28px; z-index: 999; display: flex; flex-direction: column-reverse; gap: 10px; pointer-events: none; }
+.toast {
+  background: var(--card); border: 1px solid var(--border-bright);
+  border-radius: 10px; padding: 14px 18px; font-size: 0.8rem;
+  max-width: 300px; display: flex; align-items: flex-start; gap: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  animation: toastIn 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards;
+  pointer-events: auto;
+}
+@keyframes toastIn { from{opacity:0;transform:translateX(20px)} to{opacity:1;transform:translateX(0)} }
+.toast-icon { flex-shrink: 0; font-size: 1rem; }
+.toast-msg { color: var(--text); line-height: 1.5; }
+.toast.success { border-color: rgba(92,184,138,0.3); }
+.toast.error { border-color: rgba(224,112,112,0.3); }
+.toast.info { border-color: rgba(232,201,126,0.3); }
+
+.hidden { display: none !important; }
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 10px; }
+
+.loading-overlay {
+  position: fixed; inset: 0;
+  background: rgba(11,14,20,0.9); backdrop-filter: blur(8px);
+  z-index: 500; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 20px;
+}
+.spinner { width: 44px; height: 44px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.9s linear infinite; }
+@keyframes spin { to{transform:rotate(360deg)} }
+.loading-text { font-size: 0.85rem; color: var(--muted); font-family: 'Space Mono', monospace; letter-spacing: 0.05em; }
+
+.section-full { margin-bottom: 20px; }
+.avatar { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border); }
+.avatar-placeholder { width: 30px; height: 30px; border-radius: 50%; background: var(--surface); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 0.65rem; color: var(--muted); }
+.export-btn { font-size: 0.75rem; }
+
+@media (max-width: 768px) {
+  header { padding: 0 20px; }
+  .page { padding: 24px 20px 60px; }
+  .grid-2 { grid-template-columns: 1fr; }
+  .stat-row { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* Threshold slider */
+.slider-row { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+.slider-row label { font-size: 0.75rem; color: var(--muted); white-space: nowrap; }
+input[type=range] { flex: 1; accent-color: var(--accent); }
+.slider-val { font-family: 'Space Mono', monospace; font-size: 0.72rem; color: var(--accent); min-width: 38px; text-align: right; }
+
+/* FPS counter */
+.fps-badge {
+  position: absolute; bottom: 14px; right: 14px; z-index: 10;
+  background: rgba(11,14,20,0.7);
+  border: 1px solid var(--border);
+  border-radius: 6px; padding: 3px 8px;
+  font-size: 0.62rem; font-family: 'Space Mono', monospace;
+  color: var(--muted); display: none;
+}
+.fps-badge.visible { display: block; }
+
+/* Finalize button highlight */
+.finalize-row { margin-top: 18px; display: flex; gap: 10px; align-items: center; }
+.finalize-hint { font-size: 0.75rem; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- LOADING OVERLAY -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loadingText">Loading face recognition models…</div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#e8c97e" stroke-width="1.8">
+        <circle cx="12" cy="8" r="4"/><path d="M3 20c0-5 4-8 9-8s9 3 9 8"/>
+        <path d="M16 3.5c1.5.5 2.5 2 2.5 3.5" stroke-width="1.5"/>
+        <path d="M18.5 11c1.5.5 3 2 3 4" stroke-width="1.5"/>
+      </svg>
+    </div>
+    <span class="logo-text">Face<span>ID</span></span>
+  </div>
+  <div class="header-right">
+    <span class="badge" id="dateBadge">—</span>
+    <div class="status-chip" id="statusChip">
+      <div class="dot"></div>
+      <span id="statusChipText">Initialising</span>
+    </div>
+  </div>
+</header>
+
+<div class="page">
+
+  <!-- STEP NAV -->
+  <div class="steps-nav" id="stepsNav">
+    <div class="step-item active" id="step-1-nav" onclick="goToStep(1)">
+      <div class="step-num">01</div><div class="step-label">Upload Roster</div>
+    </div>
+    <div class="step-connector"></div>
+    <div class="step-item" id="step-2-nav" onclick="goToStep(2)">
+      <div class="step-num">02</div><div class="step-label">Upload Photos</div>
+    </div>
+    <div class="step-connector"></div>
+    <div class="step-item" id="step-3-nav" onclick="goToStep(3)">
+      <div class="step-num">03</div><div class="step-label">Live Attendance</div>
+    </div>
+    <div class="step-connector"></div>
+    <div class="step-item" id="step-4-nav" onclick="goToStep(4)">
+      <div class="step-num">04</div><div class="step-label">Results</div>
+    </div>
+  </div>
+
+  <!-- ═══ STEP 1: CSV ═══ -->
+  <div id="step-1">
+    <div class="grid-2">
+      <div class="card active-card">
+        <div class="card-glow"></div>
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          </div>
+          <div>
+            <div class="card-title">Upload Student Roster</div>
+            <div class="card-desc">CSV file with student names and IDs.</div>
+          </div>
+        </div>
+        <div class="drop-zone" id="csvDrop">
+          <input type="file" id="csvFile" accept=".csv,.txt" />
+          <div class="drop-icon">📋</div>
+          <div class="drop-label"><strong>Click or drag</strong> your CSV file here</div>
+          <div class="drop-sub">Format: id,name  or  name  (one per line)</div>
+        </div>
+        <div class="file-list" id="csvFileList"></div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="parseCSVBtn" disabled>
+            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Parse Roster
+          </button>
+          <button class="btn btn-secondary" id="useSampleBtn">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>Use Sample Data
+          </button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-glow"></div>
+        <div class="card-header">
+          <div class="card-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
+          <div><div class="card-title">CSV Format Guide</div><div class="card-desc">Your file can use any of these formats.</div></div>
+        </div>
+        <div style="font-family:'Space Mono',monospace;font-size:0.72rem;color:var(--muted);line-height:2;background:var(--surface);border-radius:8px;padding:16px;border:1px solid var(--border);">
+          <div style="color:var(--accent);margin-bottom:8px;"># Format A — id,name</div>
+          <div>S001,Aarav Sharma</div><div>S002,Priya Patel</div><div>S003,Rohan Mehta</div><br>
+          <div style="color:var(--accent);margin-bottom:8px;"># Format B — name only</div>
+          <div>Aarav Sharma</div><div>Priya Patel</div>
+        </div>
+        <div style="margin-top:14px;font-size:0.75rem;color:var(--muted);line-height:1.6;">
+          💡 Photo filenames should match the student <strong style="color:var(--text);">ID</strong> or <strong style="color:var(--text);">Name</strong><br>
+          e.g. <code style="color:var(--accent);">S001.jpg</code> or <code style="color:var(--accent);">Aarav_Sharma.jpg</code>
+        </div>
+      </div>
+    </div>
+    <div class="section-full card hidden" id="rosterPreview">
+      <div class="card-glow"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <div><div class="card-title">Student Roster</div><div class="card-desc" id="rosterCount">0 students loaded</div></div>
+        <button class="btn btn-primary" onclick="goToStep(2)">Continue to Photos <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></button>
+      </div>
+      <div style="max-height:280px;overflow-y:auto;">
+        <table class="roster-table" id="rosterTable">
+          <thead><tr><th>#</th><th>Student ID</th><th>Name</th><th>Photo</th><th>Status</th></tr></thead>
+          <tbody id="rosterBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ STEP 2: PHOTOS ═══ -->
+  <div id="step-2" class="hidden">
+    <div class="grid-2">
+      <div class="card active-card">
+        <div class="card-glow"></div>
+        <div class="card-header">
+          <div class="card-icon"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>
+          <div><div class="card-title">Upload Student Photos</div><div class="card-desc">Individual reference photos for enrollment.</div></div>
+        </div>
+        <div class="drop-zone" id="photoDrop">
+          <input type="file" id="photoFiles" accept="image/*" multiple />
+          <div class="drop-icon">🖼️</div>
+          <div class="drop-label"><strong>Click or drag</strong> student photos here</div>
+          <div class="drop-sub">JPG, PNG, WEBP · Name files as StudentID.jpg or Name.jpg</div>
+        </div>
+        <div class="file-list" id="photoFileList"></div>
+        <div class="progress-section" id="enrollProgress">
+          <div class="progress-label">
+            <span id="enrollProgressLabel">Enrolling faces…</span>
+            <span id="enrollProgressPct">0%</span>
+          </div>
+          <div class="progress-track"><div class="progress-fill" id="enrollProgressBar"></div></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="enrollPhotosBtn" disabled>
+            <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>Enroll All Photos
+          </button>
+          <button class="btn btn-secondary" onclick="goToStep(1)">← Back</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-glow"></div>
+        <div class="card-header">
+          <div class="card-icon" style="background:var(--green-dim);border-color:rgba(92,184,138,0.2);">
+            <svg viewBox="0 0 24 24" style="stroke:var(--green)"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <div><div class="card-title">Enrollment Status</div><div class="card-desc" id="enrollStatusDesc">Upload photos to begin enrollment.</div></div>
+        </div>
+        <div class="stat-row" style="grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="stat-box"><div class="stat-num" id="statTotal">0</div><div class="stat-lbl">On Roster</div></div>
+          <div class="stat-box"><div class="stat-num green" id="statEnrolled">0</div><div class="stat-lbl">Enrolled</div></div>
+        </div>
+        <div id="enrolledList" style="max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:5px;margin-top:10px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ STEP 3: LIVE ATTENDANCE ═══ -->
+  <div id="step-3" class="hidden">
+    <div class="grid-2" style="grid-template-columns: 3fr 2fr;">
+
+      <!-- Left: webcam -->
+      <div class="card active-card" style="padding:20px;">
+        <div class="card-glow"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <div>
+            <div class="card-title">Live Webcam Feed</div>
+            <div class="card-desc">Faces are detected and matched in real time</div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-green" id="startCamBtn">
+              <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>Start Camera
+            </button>
+            <button class="btn btn-danger hidden" id="stopCamBtn">
+              <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>Stop
+            </button>
+          </div>
+        </div>
+
+        <!-- Webcam view -->
+        <div class="webcam-wrapper" id="webcamWrapper">
+          <!-- placeholder -->
+          <div class="webcam-placeholder" id="webcamPlaceholder">
+            <div class="big-icon">📷</div>
+            <p>Click <strong style="color:var(--accent);">Start Camera</strong> to begin live attendance</p>
+          </div>
+          <video id="webcamVideo" autoplay muted playsinline style="display:none;transform:scaleX(-1);"></video>
+          <canvas id="overlayCanvas"></canvas>
+          <div class="scan-line" id="scanLine"></div>
+          <div class="confirm-flash" id="confirmFlash"></div>
+
+          <!-- LIVE badge -->
+          <div class="webcam-live-badge" id="liveBadge">
+            <div class="live-dot"></div> LIVE
+          </div>
+
+          <!-- Overlay stats -->
+          <div class="webcam-stats-overlay" id="statsOverlay" style="display:none;">
+            <div class="wstat"><span class="wval" id="wFaces">0</span>Faces</div>
+            <div class="wstat"><span class="wval green" id="wPresent">0</span>Present</div>
+          </div>
+
+          <!-- Bottom ticker -->
+          <div class="present-ticker" id="presentTicker">
+            <div class="ticker-icon">✓</div>
+            <div class="ticker-name" id="tickerName">—</div>
+            <div class="ticker-conf" id="tickerConf">—</div>
+          </div>
+
+          <!-- FPS -->
+          <div class="fps-badge" id="fpsBadge">0 fps</div>
+        </div>
+
+        <!-- Controls -->
+        <div class="slider-row">
+          <label>Match Threshold</label>
+          <input type="range" id="thresholdSlider" min="30" max="70" value="50" />
+          <span class="slider-val" id="thresholdVal">0.50</span>
+        </div>
+
+        <div class="finalize-row">
+          <button class="btn btn-primary" id="finalizeBtn">
+            <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>Finalise Attendance
+          </button>
+          <button class="btn btn-secondary" onclick="goToStep(2)">← Back</button>
+          <span class="finalize-hint" id="finalizeHint"></span>
+        </div>
+      </div>
+
+      <!-- Right: live roster -->
+      <div class="card" style="padding:20px;">
+        <div class="card-glow"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <div>
+            <div class="card-title">Live Roster</div>
+            <div class="card-desc" id="liveRosterDesc">Waiting for camera…</div>
+          </div>
+          <button class="btn btn-secondary" style="font-size:0.7rem;padding:7px 12px;" id="resetAttBtn">Reset</button>
+        </div>
+        <div class="live-roster" id="liveRoster"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ STEP 4: RESULTS ═══ -->
+  <div id="step-4" class="hidden">
+    <div class="results-header">
+      <div class="results-title">Attendance Report</div>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-secondary export-btn" id="exportCSVBtn">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Export CSV
+        </button>
+        <button class="btn btn-secondary export-btn" onclick="goToStep(3)">← Re-run</button>
+      </div>
+    </div>
+    <div class="stat-row">
+      <div class="stat-box"><div class="stat-num" id="rStatTotal">0</div><div class="stat-lbl">Total Students</div></div>
+      <div class="stat-box"><div class="stat-num green" id="rStatPresent">0</div><div class="stat-lbl">Present</div></div>
+      <div class="stat-box"><div class="stat-num red" id="rStatAbsent">0</div><div class="stat-lbl">Absent</div></div>
+    </div>
+    <div class="card">
+      <div class="card-glow"></div>
+      <table class="roster-table" id="resultsTable">
+        <thead><tr><th>Photo</th><th>Student ID</th><th>Name</th><th>Confidence</th><th>Marked At</th><th>Status</th></tr></thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /page -->
+
+<script>
+// ═══════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════
+let modelsReady = false;
+let students = [];
+let photoFilesMap = {};
+let csvRaw = null;
+
+// Live attendance state
+let cameraStream = null;
+let detectionLoop = null;
+let presentSet = new Map();   // id -> {confidence, time}
+let isRunning = false;
+let THRESHOLD = 0.50;
+
+// FPS tracking
+let lastFrameTime = 0, fps = 0, frameCount = 0, fpsTimer = 0;
+
+// ═══════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════
+document.getElementById('dateBadge').textContent =
+  new Date().toLocaleDateString('en-IN', {weekday:'short',day:'2-digit',month:'short',year:'numeric'}).toUpperCase();
+
+(async () => {
+  const CDNS = [
+    'https://unpkg.com/face-api.js@0.22.2/weights',
+    'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights',
+    'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/0.22.2/weights',
+  ];
+  for (const CDN of CDNS) {
+    try {
+      document.getElementById('loadingText').textContent = 'Loading TinyFaceDetector…';
+      await faceapi.nets.tinyFaceDetector.loadFromUri(CDN);
+      document.getElementById('loadingText').textContent = 'Loading FaceLandmark68Net…';
+      await faceapi.nets.faceLandmark68Net.loadFromUri(CDN);
+      document.getElementById('loadingText').textContent = 'Loading FaceRecognitionNet…';
+      await faceapi.nets.faceRecognitionNet.loadFromUri(CDN);
+      modelsReady = true;
+      document.getElementById('loadingOverlay').classList.add('hidden');
+      setStatus('ready', 'Models ready');
+      toast('✓ Face recognition models loaded', 'success');
+      return;
+    } catch(e) {
+      console.warn('CDN failed:', CDN, e.message);
+    }
+  }
+  document.getElementById('loadingText').innerHTML = '❌ Could not load face models.<br><small>Check internet and reload.</small>';
+  setStatus('error', 'Model load failed');
+})();
+
+// ═══════════════════════════════════════
+// STATUS / TOAST
+// ═══════════════════════════════════════
+function setStatus(type, text) {
+  const chip = document.getElementById('statusChip');
+  chip.className = 'status-chip ' + type;
+  chip.querySelector('.dot').className = 'dot' + (type === 'working' ? ' pulse' : '');
+  document.getElementById('statusChipText').textContent = text;
+}
+
+function toast(msg, type = 'info') {
+  const icons = {success:'✓', error:'✕', info:'ℹ'};
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span class="toast-icon">${icons[type]||'ℹ'}</span><span class="toast-msg">${msg}</span>`;
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+// ═══════════════════════════════════════
+// STEP NAVIGATION
+// ═══════════════════════════════════════
+let currentStep = 1;
+function goToStep(n) {
+  [1,2,3,4].forEach(i => {
+    document.getElementById('step-' + i).classList.toggle('hidden', i !== n);
+    const nav = document.getElementById('step-' + i + '-nav');
+    nav.classList.remove('active','done');
+    if (i === n) nav.classList.add('active');
+    else if (i < n) nav.classList.add('done');
+  });
+  currentStep = n;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ═══════════════════════════════════════
+// STEP 1 — CSV
+// ═══════════════════════════════════════
+const csvFileInput = document.getElementById('csvFile');
+const csvDrop = document.getElementById('csvDrop');
+
+csvFileInput.onchange = e => { if (e.target.files[0]) handleCSVFile(e.target.files[0]); };
+csvDrop.ondragover = e => { e.preventDefault(); csvDrop.classList.add('dragover'); };
+csvDrop.ondragleave = () => csvDrop.classList.remove('dragover');
+csvDrop.ondrop = e => { e.preventDefault(); csvDrop.classList.remove('dragover'); if (e.dataTransfer.files[0]) handleCSVFile(e.dataTransfer.files[0]); };
+
+function handleCSVFile(file) {
+  csvRaw = file;
+  document.getElementById('csvFileList').innerHTML = `<div class="file-item"><span class="file-item-icon">📋</span><span class="file-item-name">${file.name}</span><span class="file-item-status pending">${(file.size/1024).toFixed(1)} KB</span></div>`;
+  document.getElementById('parseCSVBtn').disabled = false;
+}
+
+document.getElementById('parseCSVBtn').onclick = async () => { if (csvRaw) parseCSV(await csvRaw.text()); };
+
+document.getElementById('useSampleBtn').onclick = () => {
+  parseCSV(`id,name\nS001,Aarav Sharma\nS002,Priya Patel\nS003,Rohan Mehta\nS004,Ananya Singh\nS005,Vikram Nair\nS006,Kavya Reddy\nS007,Arjun Kumar\nS008,Meera Iyer`);
+  toast('Sample roster loaded — 8 students', 'info');
+};
+
+function parseCSV(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+  students = [];
+  const header = lines[0].toLowerCase();
+  const hasHeader = header.includes('name') || header.includes('id');
+  const dataLines = hasHeader ? lines.slice(1) : lines;
+  dataLines.forEach((line, idx) => {
+    const parts = line.split(',').map(p => p.trim());
+    let id, name;
+    if (parts.length >= 2) { id = parts[0]; name = parts.slice(1).join(' '); }
+    else { id = 'S' + String(idx+1).padStart(3,'0'); name = parts[0]; }
+    if (name) students.push({ id, name, descriptors: [], photoURL: null });
+  });
+  renderRoster();
+  document.getElementById('rosterPreview').classList.remove('hidden');
+  document.getElementById('rosterCount').textContent = students.length + ' students loaded';
+  document.getElementById('statTotal').textContent = students.length;
+  toast(`✓ ${students.length} students parsed`, 'success');
+  setStatus('ready', `${students.length} students loaded`);
+}
+
+function renderRoster() {
+  document.getElementById('rosterBody').innerHTML = students.map((s, i) => `
+    <tr>
+      <td style="color:var(--muted);font-family:'Space Mono',monospace;font-size:0.72rem;">${i+1}</td>
+      <td style="font-family:'Space Mono',monospace;font-size:0.78rem;color:var(--accent);">${s.id}</td>
+      <td style="font-weight:500;">${s.name}</td>
+      <td id="photoCell_${i}"><span style="font-size:0.72rem;color:var(--muted);">—</span></td>
+      <td><span class="tag tag-pending" id="statusTag_${i}">Not enrolled</span></td>
+    </tr>`).join('');
+}
+
+// ═══════════════════════════════════════
+// STEP 2 — PHOTOS / ENROLLMENT
+// ═══════════════════════════════════════
+const photoInput = document.getElementById('photoFiles');
+const photoDrop = document.getElementById('photoDrop');
+
+photoInput.onchange = e => handlePhotoFiles(Array.from(e.target.files));
+photoDrop.ondragover = e => { e.preventDefault(); photoDrop.classList.add('dragover'); };
+photoDrop.ondragleave = () => photoDrop.classList.remove('dragover');
+photoDrop.ondrop = e => { e.preventDefault(); photoDrop.classList.remove('dragover'); handlePhotoFiles(Array.from(e.dataTransfer.files)); };
+
+function handlePhotoFiles(files) {
+  photoFilesMap = {};
+  const list = document.getElementById('photoFileList');
+  list.innerHTML = '';
+  files.forEach(f => {
+    photoFilesMap[f.name] = f;
+    const matched = matchStudentToFile(f.name);
+    const item = document.createElement('div');
+    item.className = 'file-item'; item.id = 'pfi_' + f.name;
+    item.innerHTML = `<span class="file-item-icon">🖼️</span><span class="file-item-name">${f.name}</span><span class="file-item-status ${matched?'ok':'err'}">${matched?'→ '+matched.name:'No match'}</span>`;
+    list.appendChild(item);
+  });
+  document.getElementById('enrollPhotosBtn').disabled = files.length === 0;
+}
+
+function matchStudentToFile(filename) {
+  const base = filename.replace(/\.[^.]+$/,'').replace(/[_\s-]+/g,' ').toLowerCase();
+  return students.find(s => {
+    const sid = s.id.toLowerCase(), sname = s.name.toLowerCase().replace(/[_\s-]+/g,' ');
+    return base===sid||base===sname||base.includes(sid)||base.includes(sname)||sname.includes(base)||sid.includes(base);
+  }) || null;
+}
+
+document.getElementById('enrollPhotosBtn').onclick = enrollAllPhotos;
+
+async function enrollAllPhotos() {
+  const files = Object.values(photoFilesMap);
+  if (!files.length || !modelsReady) return;
+  document.getElementById('enrollPhotosBtn').disabled = true;
+  document.getElementById('enrollProgress').classList.add('visible');
+  setStatus('working', 'Enrolling faces…');
+  let done = 0;
+  const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 });
+  for (const file of files) {
+    const student = matchStudentToFile(file.name);
+    const pfi = document.getElementById('pfi_' + file.name);
+    try {
+      const img = await loadImageFromFile(file);
+      const detection = await faceapi.detectSingleFace(img, options).withFaceLandmarks().withFaceDescriptor();
+      if (detection && student) {
+        student.descriptors.push(Array.from(detection.descriptor));
+        student.photoURL = URL.createObjectURL(file);
+        const idx = students.indexOf(student);
+        const pc = document.getElementById('photoCell_' + idx);
+        const st = document.getElementById('statusTag_' + idx);
+        if (pc) pc.innerHTML = `<img src="${student.photoURL}" class="avatar" />`;
+        if (st) { st.textContent = 'Enrolled'; st.className = 'tag tag-enrolled'; }
+        if (pfi) { pfi.querySelector('.file-item-status').textContent = '✓ Enrolled'; pfi.querySelector('.file-item-status').className = 'file-item-status ok'; }
+      } else {
+        if (pfi) { const s = pfi.querySelector('.file-item-status'); s.className = 'file-item-status err'; s.textContent = !detection ? 'No face' : 'No match'; }
+      }
+    } catch(e) {
+      if (pfi) { pfi.querySelector('.file-item-status').textContent = 'Error'; pfi.querySelector('.file-item-status').className = 'file-item-status err'; }
+    }
+    done++;
+    const pct = Math.round((done / files.length) * 100);
+    document.getElementById('enrollProgressBar').style.width = pct + '%';
+    document.getElementById('enrollProgressPct').textContent = pct + '%';
+    document.getElementById('enrollProgressLabel').textContent = `Enrolling ${done}/${files.length}…`;
+  }
+  const enrolled = students.filter(s => s.descriptors.length > 0).length;
+  document.getElementById('statEnrolled').textContent = enrolled;
+  document.getElementById('enrollStatusDesc').textContent = `${enrolled} of ${students.length} students enrolled.`;
+  renderEnrolledList();
+  setStatus('ready', `${enrolled} enrolled`);
+  toast(`✓ ${enrolled} students enrolled`, 'success');
+  if (enrolled > 0) {
+    setTimeout(() => { goToStep(3); initLiveRoster(); }, 800);
+  }
+}
+
+function renderEnrolledList() {
+  const el = document.getElementById('enrolledList');
+  const enrolled = students.filter(s => s.descriptors.length > 0);
+  el.innerHTML = enrolled.map(s => `
+    <div class="file-item">
+      ${s.photoURL ? `<img src="${s.photoURL}" class="avatar" />` : '<div class="avatar-placeholder">?</div>'}
+      <span class="file-item-name">${s.name}</span>
+      <span class="tag tag-enrolled" style="font-size:0.62rem;">${s.id}</span>
+    </div>`).join('');
+}
+
+// ═══════════════════════════════════════
+// STEP 3 — LIVE WEBCAM ATTENDANCE
+// ═══════════════════════════════════════
+
+// Threshold slider
+document.getElementById('thresholdSlider').oninput = function() {
+  THRESHOLD = parseInt(this.value) / 100;
+  document.getElementById('thresholdVal').textContent = THRESHOLD.toFixed(2);
+};
+
+function initLiveRoster() {
+  presentSet.clear();
+  renderLiveRoster();
+}
+
+document.getElementById('resetAttBtn').onclick = () => {
+  presentSet.clear();
+  renderLiveRoster();
+  toast('Attendance reset', 'info');
+};
+
+document.getElementById('startCamBtn').onclick = startCamera;
+document.getElementById('stopCamBtn').onclick = stopCamera;
+document.getElementById('finalizeBtn').onclick = finalizeAttendance;
+
+async function startCamera() {
+  if (!modelsReady) { toast('Models not ready yet', 'error'); return; }
+  const enrolled = students.filter(s => s.descriptors.length > 0);
+  if (enrolled.length === 0) { toast('No enrolled students! Go back and enroll photos first.', 'error'); return; }
+
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({ video: { width:{ideal:1280}, height:{ideal:720}, facingMode:'user' }, audio: false });
+    const video = document.getElementById('webcamVideo');
+    video.srcObject = cameraStream;
+    video.style.display = 'block';
+    document.getElementById('webcamPlaceholder').style.display = 'none';
+    document.getElementById('liveBadge').classList.add('visible');
+    document.getElementById('statsOverlay').style.display = 'flex';
+    document.getElementById('fpsBadge').classList.add('visible');
+    document.getElementById('scanLine').classList.add('active');
+    document.getElementById('startCamBtn').classList.add('hidden');
+    document.getElementById('stopCamBtn').classList.remove('hidden');
+    isRunning = true;
+    setStatus('working', 'Camera live');
+    await new Promise(r => video.onloadedmetadata = r);
+    setupOverlayCanvas(video);
+    requestAnimationFrame(detectionFrame);
+  } catch(e) {
+    toast('Camera access denied: ' + e.message, 'error');
+    setStatus('error', 'Camera denied');
+  }
+}
+
+function stopCamera() {
+  isRunning = false;
+  if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
+  const video = document.getElementById('webcamVideo');
+  video.srcObject = null; video.style.display = 'none';
+  document.getElementById('webcamPlaceholder').style.display = 'flex';
+  document.getElementById('liveBadge').classList.remove('visible');
+  document.getElementById('statsOverlay').style.display = 'none';
+  document.getElementById('fpsBadge').classList.remove('visible');
+  document.getElementById('scanLine').classList.remove('active');
+  document.getElementById('presentTicker').classList.remove('visible');
+  document.getElementById('startCamBtn').classList.remove('hidden');
+  document.getElementById('stopCamBtn').classList.add('hidden');
+  // Clear canvas
+  const canvas = document.getElementById('overlayCanvas');
+  canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
+  setStatus('ready', 'Camera stopped');
+}
+
+function setupOverlayCanvas(video) {
+  const canvas = document.getElementById('overlayCanvas');
+  canvas.width = video.videoWidth || 1280;
+  canvas.height = video.videoHeight || 720;
+}
+
+const detOpts = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.4 });
+let processingFrame = false;
+
+async function detectionFrame(timestamp) {
+  if (!isRunning) return;
+
+  // FPS
+  frameCount++;
+  if (timestamp - fpsTimer >= 1000) {
+    fps = frameCount;
+    frameCount = 0;
+    fpsTimer = timestamp;
+    document.getElementById('fpsBadge').textContent = fps + ' fps';
+  }
+
+  if (!processingFrame) {
+    processingFrame = true;
+    const video = document.getElementById('webcamVideo');
+    if (video.readyState === 4) {
+      try {
+        const detections = await faceapi.detectAllFaces(video, detOpts).withFaceLandmarks().withFaceDescriptors();
+        drawOverlay(detections, video);
+        matchAndMark(detections);
+        document.getElementById('wFaces').textContent = detections.length;
+        document.getElementById('wPresent').textContent = presentSet.size;
+      } catch(e) { /* skip frame */ }
+    }
+    processingFrame = false;
+  }
+
+  requestAnimationFrame(detectionFrame);
+}
+
+function drawOverlay(detections, video) {
+  const canvas = document.getElementById('overlayCanvas');
+  if (canvas.width !== video.videoWidth) { canvas.width = video.videoWidth; canvas.height = video.videoHeight; }
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  const scaleX = canvas.width / video.videoWidth;
+  const scaleY = canvas.height / video.videoHeight;
+  // Mirror correction (video is CSS-mirrored)
+  ctx.save();
+  ctx.scale(-1,1); ctx.translate(-canvas.width,0);
+
+  for (const det of detections) {
+    const box = det.detection.box;
+    const desc = Array.from(det.descriptor);
+    const { best, dist } = findBestMatch(desc);
+    const matched = best && dist < THRESHOLD;
+    const label = matched ? best.name : 'Unknown';
+    const color = matched ? '#5cb88a' : '#e07070';
+    const x = box.x * scaleX, y = box.y * scaleY;
+    const w = box.width * scaleX, h = box.height * scaleY;
+
+    // Glowing corner bracket
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.5;
+    ctx.shadowColor = color; ctx.shadowBlur = 14;
+    const cs = Math.min(22, w*0.2);
+    [[x,y,1,1],[x+w,y,-1,1],[x,y+h,1,-1],[x+w,y+h,-1,-1]].forEach(([cx,cy,dx,dy]) => {
+      ctx.beginPath(); ctx.moveTo(cx+dx*cs,cy); ctx.lineTo(cx,cy); ctx.lineTo(cx,cy+dy*cs); ctx.stroke();
+    });
+    ctx.restore();
+
+    // Label pill
+    ctx.save();
+    ctx.font = '600 12px Outfit, sans-serif';
+    const tw = ctx.measureText(label).width;
+    ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 8;
+    ctx.fillStyle = matched ? 'rgba(11,14,20,0.85)' : 'rgba(40,10,10,0.85)';
+    roundRectFill(ctx, x-2, y-26, tw+20, 22, 5);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = color;
+    ctx.fillText(label, x+8, y-9);
+    if (matched) {
+      const conf = Math.round((1-dist)*100)+'%';
+      ctx.font = '500 10px Space Mono, monospace';
+      ctx.fillStyle = 'rgba(92,184,138,0.7)';
+      ctx.fillText(conf, x+8+tw+4, y-9);
+    }
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function findBestMatch(desc) {
+  const enrolled = students.filter(s => s.descriptors.length > 0);
+  let best = null, dist = Infinity;
+  for (const s of enrolled) {
+    for (const d of s.descriptors) {
+      const d2 = euclidean(desc, d);
+      if (d2 < dist) { dist = d2; best = s; }
+    }
+  }
+  return { best, dist };
+}
+
+// Throttle marking — only mark once per student per session
+function matchAndMark(detections) {
+  let newlyMarked = null;
+  for (const det of detections) {
+    const desc = Array.from(det.descriptor);
+    const { best, dist } = findBestMatch(desc);
+    if (best && dist < THRESHOLD && !presentSet.has(best.id)) {
+      const conf = Math.round((1-dist)*100);
+      const time = new Date().toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+      presentSet.set(best.id, { confidence: conf, time });
+      newlyMarked = { student: best, confidence: conf };
+      renderLiveRoster();
+      // Flash
+      triggerFlash();
+    }
+  }
+  if (newlyMarked) {
+    showTicker(newlyMarked.student.name, newlyMarked.confidence + '%');
+  }
+  updateFinalizeHint();
+}
+
+function triggerFlash() {
+  const f = document.getElementById('confirmFlash');
+  f.classList.remove('flash');
+  void f.offsetWidth; // reflow
+  f.classList.add('flash');
+}
+
+function showTicker(name, conf) {
+  const t = document.getElementById('presentTicker');
+  document.getElementById('tickerName').textContent = '✓ ' + name + ' marked present';
+  document.getElementById('tickerConf').textContent = 'Confidence: ' + conf;
+  t.classList.add('visible');
+  clearTimeout(t._timeout);
+  t._timeout = setTimeout(() => t.classList.remove('visible'), 3000);
+}
+
+function renderLiveRoster() {
+  const el = document.getElementById('liveRoster');
+  const enrolled = students.filter(s => s.descriptors.length > 0);
+  el.innerHTML = enrolled.map(s => {
+    const rec = presentSet.get(s.id);
+    return `<div class="lr-item ${rec ? 'present' : ''}">
+      ${s.photoURL ? `<img src="${s.photoURL}" class="lr-avatar" />` : `<div class="lr-avatar-ph">?</div>`}
+      <span class="lr-name">${s.name}</span>
+      ${rec
+        ? `<span class="tag tag-present" style="font-size:0.62rem;">✓ ${rec.confidence}%</span><span class="lr-time">${rec.time}</span>`
+        : `<span class="tag tag-pending" style="font-size:0.62rem;">Absent</span>`
+      }
+    </div>`;
+  }).join('');
+  document.getElementById('liveRosterDesc').textContent = `${presentSet.size} / ${enrolled.length} present`;
+}
+
+function updateFinalizeHint() {
+  const enrolled = students.filter(s => s.descriptors.length > 0).length;
+  const hint = document.getElementById('finalizeHint');
+  hint.textContent = `${presentSet.size} of ${enrolled} marked present`;
+}
+
+function finalizeAttendance() {
+  stopCamera();
+  buildResults();
+  goToStep(4);
+}
+
+// ═══════════════════════════════════════
+// STEP 4 — RESULTS
+// ═══════════════════════════════════════
+function buildResults() {
+  const enrolled = students.filter(s => s.descriptors.length > 0);
+  const present = enrolled.filter(s => presentSet.has(s.id)).length;
+  const absent = enrolled.length - present;
+  document.getElementById('rStatTotal').textContent = enrolled.length;
+  document.getElementById('rStatPresent').textContent = present;
+  document.getElementById('rStatAbsent').textContent = absent;
+
+  document.getElementById('resultsBody').innerHTML = enrolled.map(s => {
+    const rec = presentSet.get(s.id);
+    return `<tr>
+      <td>${s.photoURL ? `<img src="${s.photoURL}" class="avatar" />` : '<div class="avatar-placeholder">?</div>'}</td>
+      <td style="font-family:'Space Mono',monospace;font-size:0.75rem;color:var(--accent);">${s.id}</td>
+      <td style="font-weight:500;">${s.name}</td>
+      <td style="font-family:'Space Mono',monospace;font-size:0.75rem;color:var(--muted);">${rec ? rec.confidence + '%' : '—'}</td>
+      <td style="font-family:'Space Mono',monospace;font-size:0.72rem;color:var(--muted);">${rec ? rec.time : '—'}</td>
+      <td><span class="tag ${rec ? 'tag-present' : 'tag-absent'}">${rec ? '✓ Present' : '✕ Absent'}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+document.getElementById('exportCSVBtn').onclick = () => {
+  const enrolled = students.filter(s => s.descriptors.length > 0);
+  const rows = [['Student ID','Name','Status','Confidence','Marked At']];
+  enrolled.forEach(s => {
+    const rec = presentSet.get(s.id);
+    rows.push([s.id, s.name, rec ? 'Present' : 'Absent', rec ? rec.confidence+'%' : '', rec ? rec.time : '']);
+  });
+  const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+  a.download = `attendance_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  toast('✓ CSV exported', 'success');
+};
+
+// ═══════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════
+function loadImageFromFile(file) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = rej;
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+function euclidean(a, b) {
+  return Math.sqrt(a.reduce((s,v,i) => s + (v-b[i])**2, 0));
+}
+
+function roundRectFill(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.arcTo(x+w,y,x+w,y+r,r);
+  ctx.lineTo(x+w,y+h-r); ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
+  ctx.lineTo(x+r,y+h); ctx.arcTo(x,y+h,x,y+h-r,r);
+  ctx.lineTo(x,y+r); ctx.arcTo(x,y,x+r,y,r);
+  ctx.closePath(); ctx.fill();
+}
+</script>
+</body>
+</html>

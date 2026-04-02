@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neural Engine 0.1 | ML Deployment</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0"></script>
+    <style>
+        :root {
+            --neon-cyan: #00f2ff;
+            --neon-magenta: #ff00ff;
+            --bg-dark: #0a0a12;
+            --glass: rgba(255, 255, 255, 0.05);
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            background-image: radial-gradient(circle at 50% 50%, #1a1a2e 0%, #0a0a12 100%);
+            color: white;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        .card {
+            background: var(--glass);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 40px;
+            width: 380px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            position: relative;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: -2px; left: -2px; right: -2px; bottom: -2px;
+            background: linear-gradient(45deg, var(--neon-cyan), transparent, var(--neon-magenta));
+            z-index: -1;
+            border-radius: 26px;
+            opacity: 0.3;
+        }
+
+        h1 { font-size: 1.4rem; letter-spacing: 4px; margin: 0; text-transform: uppercase; color: var(--neon-cyan); }
+        .subtitle { font-size: 0.7rem; letter-spacing: 2px; opacity: 0.6; margin-bottom: 30px; text-transform: uppercase; }
+
+        /* Input Styling */
+        .input-section { margin: 20px 0; }
+        input[type=range] { width: 100%; accent-color: var(--neon-cyan); cursor: pointer; }
+        #inputValLabel { font-family: monospace; font-size: 1.2rem; color: var(--neon-cyan); }
+
+        /* Button Grid */
+        .buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 25px 0; }
+        button {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: white;
+            padding: 12px;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+        }
+        button:hover { background: rgba(255, 255, 255, 0.2); transform: translateY(-2px); }
+        .predict-btn { 
+            grid-column: span 2; 
+            background: var(--neon-cyan); 
+            color: #000; 
+            border: none;
+            box-shadow: 0 0 20px rgba(0, 242, 255, 0.4);
+        }
+        .predict-btn:hover { background: #fff; box-shadow: 0 0 30px var(--neon-cyan); }
+
+        /* Training Progress Bar */
+        .progress-wrapper { width: 100%; height: 4px; background: #222; border-radius: 2px; margin-bottom: 20px; overflow: hidden; display: none; }
+        #progress-bar { width: 0%; height: 100%; background: var(--neon-magenta); transition: width 0.1s; }
+
+        /* Output Display */
+        .output-box {
+            background: rgba(0, 0, 0, 0.4);
+            border-radius: 15px;
+            padding: 20px;
+            border-left: 3px solid var(--neon-magenta);
+            text-align: left;
+        }
+        #result-display { font-size: 3rem; font-weight: 800; text-align: center; color: var(--neon-cyan); margin: 10px 0; text-shadow: 0 0 15px var(--neon-cyan); }
+        .status-text { font-size: 0.7rem; color: #aaa; margin: 4px 0; font-family: monospace; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h1>Neural Engine</h1>
+    <p class="subtitle">v1.0 • Deployment Lab</p>
+
+    <div class="input-section">
+        <div class="status-text">Set Input Parameter (x):</div>
+        <div id="inputValLabel">0</div>
+        <input type="range" id="inputValue" min="-10" max="10" step="1" value="0" oninput="updateUI(this.value)">
+    </div>
+
+    <div class="progress-wrapper" id="p-wrapper">
+        <div id="progress-bar"></div>
+    </div>
+
+    <div class="buttons">
+        <button onclick="trainModel()">1. Train AI</button>
+        <button onclick="saveModel()">2. Store Weights</button>
+        <button onclick="loadModel()">3. Reload AI</button>
+        <button onclick="predict()" class="predict-btn">Run Inference</button>
+    </div>
+
+    <div class="output-box">
+        <div id="result-display">--</div>
+        <p class="status-text" id="status">📌 Status: Ready</p>
+        <p class="status-text" id="modelStatus">📂 DB: No model detected</p>
+    </div>
+</div>
+
+<script>
+    let model;
+    const MODEL_ID = 'indexeddb://neural-engine-v1';
+
+    function updateUI(val) {
+        document.getElementById('inputValLabel').innerText = val;
+    }
+
+    function setStatus(msg) {
+        document.getElementById('status').innerText = `📌 Status: ${msg}`;
+    }
+
+    // --- ML LOGIC ---
+
+    async function trainModel() {
+        const pWrapper = document.getElementById('p-wrapper');
+        const pBar = document.getElementById('progress-bar');
+        
+        pWrapper.style.display = 'block';
+        setStatus("Training Neurons...");
+
+        // Define a simple linear model
+        model = tf.sequential();
+        model.add(tf.layers.dense({units: 1, inputShape: [1]}));
+        model.compile({loss: 'meanSquaredError', optimizer: 'sgd'});
+
+        // Data for y = 2x - 1
+        const xs = tf.tensor2d([-1, 0, 1, 2, 3, 4], [6, 1]);
+        const ys = tf.tensor2d([-3, -1, 1, 3, 5, 7], [6, 1]);
+
+        await model.fit(xs, ys, {
+            epochs: 100,
+            callbacks: {
+                onEpochEnd: (epoch) => {
+                    pBar.style.width = `${epoch + 1}%`;
+                }
+            }
+        });
+
+        setStatus("Training Complete");
+        pWrapper.style.display = 'none';
+        pBar.style.width = '0%';
+    }
+
+    async function saveModel() {
+        if (!model) return setStatus("Error: Train first!");
+        await model.save(MODEL_ID);
+        document.getElementById('modelStatus').innerText = "📂 DB: Weights Stored";
+        setStatus("Model Archived");
+    }
+
+    async function loadModel() {
+        try {
+            model = await tf.loadLayersModel(MODEL_ID);
+            document.getElementById('modelStatus').innerText = "📂 DB: Weights Loaded";
+            setStatus("AI Successfully Reloaded");
+        } catch (e) {
+            setStatus("Error: No data in DB");
+        }
+    }
+
+    function predict() {
+        if (!model) return setStatus("Error: No Model Loaded");
+
+        const val = parseFloat(document.getElementById('inputValue').value);
+        
+        // Wrap in tidy to prevent memory leaks
+        tf.tidy(() => {
+            const input = tf.tensor2d([val], [1, 1]);
+            const output = model.predict(input);
+            const prediction = output.dataSync()[0];
+            
+            document.getElementById('result-display').innerText = prediction.toFixed(2);
+            setStatus("Inference Successful");
+        });
+    }
+</script>
+
+</body>
+</html>

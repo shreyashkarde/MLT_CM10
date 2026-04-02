@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fruit Ninja AI 🍎</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/knn-classifier"></script>
+
+    <style>
+        :root {
+            --primary: #ff4757;
+            --secondary: #2ed573;
+            --accent: #ffa502;
+            --bg-gradient: radial-gradient(circle at top left, #1e3799, #000000);
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg-gradient);
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .app-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 30px;
+            border-radius: 28px;
+            width: 100%;
+            max-width: 480px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+            text-align: center;
+        }
+
+        h1 { margin: 0 0 10px 0; font-size: 2rem; color: #fff; }
+        
+        #status-indicator {
+            font-size: 0.85rem;
+            margin-bottom: 20px;
+            color: #00f2fe;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .video-container {
+            position: relative;
+            background: #000;
+            border-radius: 18px;
+            overflow: hidden;
+            border: 3px solid var(--accent);
+            margin-bottom: 20px;
+            line-height: 0;
+        }
+
+        video {
+            width: 100%;
+            height: auto;
+            transform: scaleX(-1); /* Mirror effect */
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 8px;
+        }
+
+        input {
+            flex: 1;
+            padding: 12px 15px;
+            border-radius: 12px;
+            border: none;
+            outline: none;
+            font-size: 1rem;
+        }
+
+        button {
+            padding: 12px 18px;
+            border: none;
+            border-radius: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+        }
+
+        button:active { transform: scale(0.96); }
+
+        .btn-add { background: var(--accent); color: white; }
+        .btn-snap { background: var(--primary); color: white; }
+        .btn-predict { background: var(--secondary); color: white; }
+        
+        button:disabled {
+            background: #555 !important;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        #results {
+            margin-top: 20px;
+            padding: 20px;
+            background: rgba(0,0,0,0.4);
+            border-radius: 15px;
+            min-height: 60px;
+        }
+
+        #prediction-text { font-size: 1.4rem; font-weight: bold; }
+
+        .progress-container {
+            width: 100%;
+            height: 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            margin-top: 10px;
+            overflow: hidden;
+            display: none;
+        }
+
+        #progress-bar {
+            width: 0%;
+            height: 100%;
+            background: var(--secondary);
+            transition: width 0.3s;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-card">
+        <h1>Fruit Ninja AI 🍎</h1>
+        <div id="status-indicator">Initializing AI Engine...</div>
+
+        <div class="video-container">
+            <video id="webcam" autoplay playsinline muted></video>
+        </div>
+
+        <div class="controls">
+            <div class="input-row">
+                <input type="text" id="className" placeholder="Name (e.g. Banana)">
+                <button class="btn-add" onclick="updateStatus()">Set Fruit</button>
+            </div>
+
+            <button id="snapBtn" class="btn-snap" onclick="capture()" disabled>📸 Snap Training Image</button>
+            <button id="predictBtn" class="btn-predict" onclick="togglePredict()" disabled>🔍 Start Identifying</button>
+        </div>
+
+        <div id="results">
+            <div id="prediction-text">Ready for training</div>
+            <div class="progress-container" id="prog-cont">
+                <div id="progress-bar"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let net;
+        const classifier = knnClassifier.create();
+        const webcamElement = document.getElementById('webcam');
+        let isPredicting = false;
+
+        // Optimized Webcam Setup
+        async function setupWebcam() {
+            return new Promise((resolve, reject) => {
+                const constraints = { video: { facingMode: 'user' }, audio: false };
+                
+                navigator.mediaDevices.getUserMedia(constraints)
+                    .then(stream => {
+                        webcamElement.srcObject = stream;
+                        webcamElement.onloadedmetadata = () => {
+                            webcamElement.play();
+                            resolve();
+                        };
+                    })
+                    .catch(err => {
+                        console.error("Camera Error:", err);
+                        document.getElementById('status-indicator').innerText = "❌ CAMERA ERROR: Check permissions";
+                        reject(err);
+                    });
+            });
+        }
+
+        async function init() {
+            try {
+                // 1. Load MobileNet
+                net = await mobilenet.load();
+                document.getElementById('status-indicator').innerText = "Model Loaded. Accessing Camera...";
+                
+                // 2. Setup Camera
+                await setupWebcam();
+                
+                // 3. UI Ready
+                document.getElementById('status-indicator').innerText = "✅ AI SYSTEM ONLINE";
+                document.getElementById('snapBtn').disabled = false;
+                document.getElementById('predictBtn').disabled = false;
+            } catch (error) {
+                console.error(error);
+            }
+        }
+
+        function updateStatus() {
+            const name = document.getElementById('className').value;
+            if(name) document.getElementById('status-indicator').innerText = `Training mode: ${name}`;
+        }
+
+        async function capture() {
+            const label = document.getElementById('className').value.trim();
+            if(!label) return alert("Enter fruit name first!");
+
+            const img = tf.browser.fromPixels(webcamElement);
+            const activation = net.infer(img, 'conv_preds');
+            
+            classifier.addExample(activation, label);
+            
+            const count = classifier.getClassExampleCount()[label];
+            document.getElementById('prediction-text').innerText = `Added ${label} (#${count})`;
+            
+            img.dispose();
+        }
+
+        async function togglePredict() {
+            if (classifier.getNumClasses() === 0) return alert("Train me first! Snap some images.");
+
+            isPredicting = !isPredicting;
+            const btn = document.getElementById('predictBtn');
+            const prog = document.getElementById('prog-cont');
+            
+            btn.innerText = isPredicting ? "STOP SCANNING" : "🔍 START IDENTIFYING";
+            btn.style.background = isPredicting ? "#333" : "var(--secondary)";
+            prog.style.display = isPredicting ? "block" : "none";
+
+            while (isPredicting) {
+                const img = tf.browser.fromPixels(webcamElement);
+                const activation = net.infer(img, 'conv_preds');
+                const result = await classifier.predictClass(activation);
+                
+                const { label, confidences } = result;
+                const confPercent = Math.floor(confidences[label] * 100);
+
+                document.getElementById('prediction-text').innerHTML = 
+                    `<span style="color:var(--secondary)">${label}</span> (${confPercent}%)`;
+                document.getElementById('progress-bar').style.width = `${confPercent}%`;
+
+                img.dispose();
+                await tf.nextFrame();
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>
